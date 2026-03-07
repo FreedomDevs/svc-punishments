@@ -1,13 +1,14 @@
 from fastapi import FastAPI, Request
 from sqlalchemy import text
-
 from app.enums import Codes
+from app.models import Base
 from app.responses import success_response
 from app.db import engine
 from app.db import SessionLocal
 
 
 app = FastAPI(title="svc-punishments")
+Base.metadata.create_all(engine)
 
 @app.get("/live")
 def live(request: Request):
