@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: svc-punishments-postgres
+
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: mydb
+
+    volumes:
+      - db:/var/lib/postgresql/data
+
+    networks:
+      net:
+        ipv6_address: fd98:2dd6:8f48:1d99:5902:b7ae::3
+  
+  app-dev:
+    container_name: svc-punishments-app-dev
+    build:
+      context: .
+      dockerfile: Dockerfile-test
+    volumes:
+      - ./app:/app:rw
+    depends_on:
+      - postgres
+    cap_add:
+      - NET_BIND_SERVICE
+
+    networks:
+      net:
+        ipv6_address: fd98:2dd6:8f48:1d99:5902:b7ae::2
+
+networks:
+  net:
+    enable_ipv6: true
+    enable_ipv4: false
+    driver_opts:
+      com.docker.network.driver.mtu: "65535"
+    ipam:
+      config:
+        - subnet: fd98:2dd6:8f48:1d99:5902:b7ae::/96
+
+volumes:
+  db:
+
