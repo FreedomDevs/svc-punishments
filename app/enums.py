@@ -1,0 +1,7 @@
+class Codes:
+
+    HEALTH_OK = "HEALTH_OK"
+    LIVE_OK = "LIVE_OK"
+
+
+    HEALTH_ERROR = "HEALTH_ERROR"
