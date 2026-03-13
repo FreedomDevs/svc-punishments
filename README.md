@@ -25,7 +25,7 @@
 Сервис запускается через **docker compose**.
 
 ```bash
-docker compose up --build
+docker compose up -d
 ```
 
 После запуска будут подняты:
