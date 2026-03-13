@@ -16,7 +16,7 @@
 Поддерживаются:
 
 * **глобальные наказания** (serverName = null)
-* **локальные наказания** (на конкретный сервер)
+* **локальные наказания** (для конкретного сервера)
 
 Все наказания сохраняются в PostgreSQL и доступны через REST API.
 
@@ -35,6 +35,10 @@ docker compose up --build
 * **svc-punishments-app-dev** — приложение
 * **svc-punishments-postgres** — база данных
 
+---
+
+# Сетевые адреса
+
 IP сервиса из docker-compose:
 
 ```
@@ -47,8 +51,7 @@ IP базы данных:
 [fd98:2dd6:8f48:1d99:5902:b7ae::3]:5432
 ```
 
-
-Swagger документация будет доступна:
+Swagger документация:
 
 ```
 http://[fd98:2dd6:8f48:1d99:5902:b7ae::2]/docs
@@ -62,7 +65,7 @@ http://[fd98:2dd6:8f48:1d99:5902:b7ae::2]/docs
 
 POST `/punishments`
 
-```
+```json
 {
   "userId": "c9a6467e-3d02-4f29-95c2-7a0c1d0c7c12",
   "type": "BAN",
@@ -75,11 +78,9 @@ POST `/punishments`
 
 Ответ:
 
-```
-201 Created
-```
+HTTP `201 Created`
 
-```
+```json
 {
   "data": {
     "punishmentId": "0c0c7a0c-7a0c-7a0c-7a0c-0c0c7a0c7a0c"
@@ -105,7 +106,7 @@ GET
 
 Ответ:
 
-```
+```json
 {
   "data": [
     {
@@ -138,7 +139,7 @@ GET
 
 Ответ:
 
-```
+```json
 {
   "data": [
     {
@@ -174,7 +175,7 @@ POST
 /punishments/{punishmentId}/revoke
 ```
 
-```
+```json
 {
   "revokedBy": "a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1",
   "reason": "Appeal accepted"
@@ -183,7 +184,7 @@ POST
 
 Ответ:
 
-```
+```json
 {
   "data": {
     "punishmentId": "0c0c7a0c-7a0c-7a0c-7a0c-0c0c7a0c7a0c"
@@ -201,24 +202,25 @@ POST
 
 # Эндпоинты
 
-| метод | endpoint                 | описание                     |
+| Метод | Endpoint                 | Описание                     |
 | ----- | ------------------------ | ---------------------------- |
-| POST  | /punishments             | выдать наказание             |
-| GET   | /punishments/check       | проверить активные наказания |
-| GET   | /punishments/history     | получить историю наказаний   |
-| POST  | /punishments/{id}/revoke | отменить наказание           |
+| POST  | /punishments             | Выдать наказание             |
+| GET   | /punishments/check       | Проверить активные наказания |
+| GET   | /punishments/history     | Получить историю наказаний   |
+| POST  | /punishments/{id}/revoke | Отменить наказание           |
 
 ---
 
 # HTTP коды статусов
 
-| код                        | описание                    |
+| Код                        | Описание                    |
 | -------------------------- | --------------------------- |
-| PUNISHMENT_CREATED_OK      | наказание создано           |
-| PUNISHMENT_CHECK_OK        | активные наказания получены |
-| PUNISHMENT_HISTORY_OK      | история получена            |
-| PUNISHMENT_REVOKED_OK      | наказание отменено          |
-| PUNISHMENT_NOT_FOUND       | наказание не найдено        |
-| PUNISHMENT_ALREADY_REVOKED | наказание уже отменено      |
+| PUNISHMENT_CREATED_OK      | Наказание создано           |
+| PUNISHMENT_CHECK_OK        | Активные наказания получены |
+| PUNISHMENT_HISTORY_OK      | История наказаний получена  |
+| PUNISHMENT_REVOKED_OK      | Наказание отменено          |
+| PUNISHMENT_NOT_FOUND       | Наказание не найдено        |
+| PUNISHMENT_ALREADY_REVOKED | Наказание уже отменено      |
 
 ---
+* сделать README **уровня production микросервиса** — это прям сильно повышает качество GitHub проекта.
