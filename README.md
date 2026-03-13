@@ -26,9 +26,9 @@
 
 Сервис запускается через **docker compose**.
 
-**bash
+```bash
 docker compose up --build
-**
+```
 
 После запуска будут подняты:
 
@@ -223,4 +223,3 @@ POST
 | PUNISHMENT_ALREADY_REVOKED | Наказание уже отменено      |
 
 ---
-* сделать README **уровня production микросервиса** — это прям сильно повышает качество GitHub проекта.
