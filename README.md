@@ -1,56 +1,56 @@
+---
+
 # svc-punishments
 
 Микросервис хранения и управления наказаниями игроков сети серверов Minecraft.
-Сервис **не исполняет наказания**, а только хранит данные и предоставляет REST API для работы с ними.
 
-Исполнение наказаний (бан, мут, кик) выполняется плагинами серверов.
-Сервис используется для проверки активных наказаний и хранения полной истории.
+Сервис хранит информацию о наказаниях и предоставляет REST API для работы с ними.
+Исполнение наказаний (бан, мут и т.д.) выполняется серверными плагинами.
 
 Поддерживаемые типы наказаний:
 
-* BAN (перманентный бан)
-* TEMP_BAN (временный бан)
-* MUTE (перманентный мут)
-* TEMP_MUTE (временный мут)
-* IP_BAN (бан по IP)
-* WARN (предупреждение)
+* BAN
+* MUTE
+* WARN
 
 Поддерживаются:
 
-* **глобальные наказания** (на всю сеть)
+* **глобальные наказания** (serverName = null)
 * **локальные наказания** (на конкретный сервер)
 
----
-
-## Клонирование репозитория
-
-```bash
-git clone https://github.com/FreedomDevs/svc-punishments
-cd svc-punishments
-```
+Все наказания сохраняются в PostgreSQL и доступны через REST API.
 
 ---
 
-## Установка зависимостей
+# Запуск
+
+Сервис запускается через **docker compose**.
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+docker compose up --build
 ```
 
----
+После запуска будут подняты:
 
-## Запуск
+* **svc-punishments-app-dev** — приложение
+* **svc-punishments-postgres** — база данных
 
-```bash
-uvicorn app.main:app --host 0.0.0.0 --port 9010 --reload
-```
-
-Документация будет доступна по адресу:
+IP сервиса из docker-compose:
 
 ```
-http://localhost:9010/docs
+http://[fd98:2dd6:8f48:1d99:5902:b7ae::2]
+```
+
+IP базы данных:
+
+```
+[fd98:2dd6:8f48:1d99:5902:b7ae::3]:5432
+```
+
+Swagger документация будет доступна:
+
+```
+http://[fd98:2dd6:8f48:1d99:5902:b7ae::2]/docs
 ```
 
 ---
@@ -59,15 +59,16 @@ http://localhost:9010/docs
 
 ## Создание наказания
 
-POST `/v1/punishments`
+POST `/punishments`
 
-```json
+```
 {
   "userId": "c9a6467e-3d02-4f29-95c2-7a0c1d0c7c12",
-  "type": "TEMP_BAN",
+  "type": "BAN",
   "reason": "Cheating",
   "serverName": "survival-1",
-  "duration": 3600
+  "duration": 3600,
+  "issuedBy": "a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1"
 }
 ```
 
@@ -77,9 +78,17 @@ POST `/v1/punishments`
 201 Created
 ```
 
-```json
+```
 {
-  "punishmentId": "0c0c7a0c-7a0c-7a0c-7a0c-0c0c7a0c7a0c"
+  "data": {
+    "punishmentId": "0c0c7a0c-7a0c-7a0c-7a0c-0c0c7a0c7a0c"
+  },
+  "message": "Punishment created",
+  "meta": {
+    "code": "PUNISHMENT_CREATED_OK",
+    "traceId": "8d4c5c8c4e624154bd7f5105f6254bc7",
+    "timestamp": "2026-03-13T12:00:00Z"
+  }
 }
 ```
 
@@ -87,20 +96,32 @@ POST `/v1/punishments`
 
 ## Проверка активных наказаний
 
-GET `/v1/punishments/check?userId={userId}&serverName={serverName}`
+GET
+
+```
+/punishments/check?userId={userId}&serverName={serverName}
+```
 
 Ответ:
 
-```json
+```
 {
-  "punishments": [
+  "data": [
     {
-      "type": "TEMP_BAN",
+      "type": "BAN",
       "reason": "Cheating",
-      "issuedBy": "admin-id",
-      "expiresAt": "2026-03-15T12:00:00Z"
+      "issuedBy": "a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1",
+      "expiresAt": "2026-03-14T12:00:00Z",
+      "createdAt": "2026-03-13T12:00:00Z",
+      "issued": "User"
     }
-  ]
+  ],
+  "message": "Active punishments fetched",
+  "meta": {
+    "code": "PUNISHMENT_CHECK_OK",
+    "traceId": "8d4c5c8c4e624154bd7f5105f6254bc7",
+    "timestamp": "2026-03-13T12:00:00Z"
+  }
 }
 ```
 
@@ -108,19 +129,53 @@ GET `/v1/punishments/check?userId={userId}&serverName={serverName}`
 
 ## История наказаний
 
-GET `/v1/punishments/history?userId={userId}`
+GET
 
-Возвращает полную историю наказаний игрока.
+```
+/punishments/history?userId={userId}
+```
+
+Ответ:
+
+```
+{
+  "data": [
+    {
+      "id": "0c0c7a0c-7a0c-7a0c-7a0c-0c0c7a0c7a0c",
+      "type": "BAN",
+      "reason": "Cheating",
+      "issuedBy": "a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1",
+      "serverName": "survival-1",
+      "createdAt": "2026-03-13T12:00:00Z",
+      "expiresAt": "2026-03-14T12:00:00Z",
+      "revokedAt": null,
+      "issued": "User",
+      "revokedBy": null,
+      "revokedReason": null
+    }
+  ],
+  "message": "Punishment history fetched",
+  "meta": {
+    "code": "PUNISHMENT_HISTORY_OK",
+    "traceId": "8d4c5c8c4e624154bd7f5105f6254bc7",
+    "timestamp": "2026-03-13T12:00:00Z"
+  }
+}
+```
 
 ---
 
 ## Отмена наказания
 
-POST `/v1/punishments/{punishmentId}/revoke`
+POST
 
-```json
+```
+/punishments/{punishmentId}/revoke
+```
+
+```
 {
-  "revokedBy": "admin-id",
+  "revokedBy": "a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1",
   "reason": "Appeal accepted"
 }
 ```
@@ -128,36 +183,41 @@ POST `/v1/punishments/{punishmentId}/revoke`
 Ответ:
 
 ```
-200 OK
+{
+  "data": {
+    "punishmentId": "0c0c7a0c-7a0c-7a0c-7a0c-0c0c7a0c7a0c"
+  },
+  "message": "Punishment revoked",
+  "meta": {
+    "code": "PUNISHMENT_REVOKED_OK",
+    "traceId": "8d4c5c8c4e624154bd7f5105f6254bc7",
+    "timestamp": "2026-03-13T12:00:00Z"
+  }
+}
 ```
 
 ---
 
 # Эндпоинты
 
-| Метод | Endpoint                    | Описание                     |
-| ----- | --------------------------- | ---------------------------- |
-| POST  | /v1/punishments             | Выдать наказание             |
-| GET   | /v1/punishments/check       | Проверить активные наказания |
-| GET   | /v1/punishments/history     | Получить историю наказаний   |
-| POST  | /v1/punishments/{id}/revoke | Отменить наказание           |
-| GET   | /health                     | Сервер здоров                |
-| GET   | /live                       | Сервер жив                   |
+| метод | endpoint                 | описание                     |
+| ----- | ------------------------ | ---------------------------- |
+| POST  | /punishments             | выдать наказание             |
+| GET   | /punishments/check       | проверить активные наказания |
+| GET   | /punishments/history     | получить историю наказаний   |
+| POST  | /punishments/{id}/revoke | отменить наказание           |
 
 ---
 
 # HTTP коды статусов
 
-| Код                    | HTTP | Описание                     |
-| ---------------------- | ---- | ---------------------------- |
-| PUNISHMENT_CREATED_OK  | 201  | Наказание успешно выдано     |
-| PUNISHMENTS_CHECK_OK   | 200  | Проверка наказаний выполнена |
-| PUNISHMENTS_HISTORY_OK | 200  | История получена             |
-| PUNISHMENT_REVOKED_OK  | 200  | Наказание отменено           |
-| PUNISHMENT_NOT_FOUND   | 404  | Наказание не найдено         |
-| INVALID_REQUEST        | 400  | Некорректный запрос          |
-| INTERNAL_ERROR         | 500  | Внутренняя ошибка сервера    |
-| HEALTH_OK              | 200  | Сервис здоров                |
-| LIVE_OK                | 200  | Сервис жив                   |
+| код                        | описание                    |
+| -------------------------- | --------------------------- |
+| PUNISHMENT_CREATED_OK      | наказание создано           |
+| PUNISHMENT_CHECK_OK        | активные наказания получены |
+| PUNISHMENT_HISTORY_OK      | история получена            |
+| PUNISHMENT_REVOKED_OK      | наказание отменено          |
+| PUNISHMENT_NOT_FOUND       | наказание не найдено        |
+| PUNISHMENT_ALREADY_REVOKED | наказание уже отменено      |
 
 ---
