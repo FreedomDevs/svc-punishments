@@ -87,15 +87,39 @@ def check_punishments(userId: str, serverName: str | None, request: Request):
     )
 
 @app.get("/punishments/history")
-def punishment_history(userId: str, request: Request):
+def punishment_history(
+    userId: str,
+    request: Request,
+    serverName: str | None = None,
+    globalOnly: bool = False,
+    fromTime: datetime | None = None,
+    toTime: datetime | None = None,
+    page: int = 1,
+    pageSize: int = 20
+):
 
     trace_id = request.headers.get("X-Trace-Id")
-
     db = SessionLocal()
 
-    rows = db.query(PunishmentsTable).filter(
+    query = db.query(PunishmentsTable).filter(
         PunishmentsTable.user_id == userId
-    ).all()
+    )
+
+    if serverName:
+        query = query.filter(PunishmentsTable.server_name == serverName)
+
+    if globalOnly:
+        query = query.filter(PunishmentsTable.server_name == None)
+
+    if fromTime:
+        query = query.filter(PunishmentsTable.created_at >= fromTime)
+
+    if toTime:
+        query = query.filter(PunishmentsTable.created_at <= toTime)
+
+    total = query.count()
+
+    rows = query.offset((page - 1) * pageSize).limit(pageSize).all()
 
     history = []
 
@@ -112,15 +136,26 @@ def punishment_history(userId: str, request: Request):
             "issued": r.issued,
             "revokedBy": r.revoked_by,
             "revokedReason": r.revoke_reason,
-
         })
 
-    return success_response(
-        data=history,
-        message="Punishment history fetched",
-        code=Codes.PUNISHMENT_HISTORY_OK,
-        trace_id=trace_id
-    )
+    totalPages = (total + pageSize - 1) // pageSize
+
+    return {
+        "data": history,
+        "pagination": {
+            "page": page,
+            "pageSize": pageSize,
+            "total": total,
+            "totalPages": totalPages
+        },
+        "message": "Punishment history fetched",
+        "meta": {
+            "code": Codes.PUNISHMENT_HISTORY_OK,
+            "traceId": trace_id,
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+    }
+
 
 @app.post("/punishments/{punishment_id}/revoke")
 def revoke_punishment(
@@ -164,3 +199,69 @@ def revoke_punishment(
         code=Codes.PUNISHMENT_REVOKED_OK,
         trace_id=trace_id
     )
+
+
+
+
+@app.post("/punishments/revoke")
+def revoke_bulk(
+    req: PunishmentRevokeRequest,
+    request: Request,
+    userId: str | None = None,
+    type: str | None = None
+):
+
+    trace_id = request.headers.get("X-Trace-Id")
+    db = SessionLocal()
+
+    if not userId:
+        return error_response(
+            message="userId required",
+            code="PUNISHMENT_INVALID_PARAMS",
+            trace_id=trace_id
+        )
+
+    now = datetime.utcnow()
+
+    query = db.query(PunishmentsTable).filter(
+        PunishmentsTable.user_id == userId,
+        PunishmentsTable.revoked_at == None
+    )
+
+    if type:
+        query = query.filter(PunishmentsTable.type == type)
+
+    rows = query.all()
+
+    if not rows:
+        return error_response(
+            message="No active punishments found",
+            code=Codes.PUNISHMENT_NOT_FOUND,
+            trace_id=trace_id
+        )
+
+    revoked_ids = []
+
+    for p in rows:
+
+        if p.expires_at and p.expires_at < now:
+            continue
+
+        p.revoked_at = now
+        p.revoked_by = req.revokedBy
+        p.revoke_reason = req.reason
+
+        revoked_ids.append(str(p.id))
+
+    db.commit()
+
+    return success_response(
+        data={"revoked": revoked_ids},
+        message="Punishments revoked",
+        code=Codes.PUNISHMENT_REVOKED_OK,
+        trace_id=trace_id
+    )
+
+
+
+
