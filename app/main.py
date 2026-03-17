@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timedelta
-
+from sqlalchemy import or_
 from fastapi import FastAPI, Request
 from sqlalchemy import text
 from app.db import SessionLocal, engine
@@ -50,34 +50,40 @@ def create_punishment(req: PunishmentCreateRequest, request: Request):
 def check_punishments(userId: str, serverName: str | None, request: Request):
 
     trace_id = request.headers.get("X-Trace-Id")
-
     db = SessionLocal()
 
     now = datetime.utcnow()
 
-    rows = db.query(PunishmentsTable).filter(
-        PunishmentsTable.user_id == userId,
-        PunishmentsTable.revoked_at == None
-    ).all()
+    query = db.query(PunishmentsTable).filter(
+        PunishmentsTable.user_id == uuid.UUID(userId),
+        PunishmentsTable.revoked_at == None,
+        or_(
+            PunishmentsTable.expires_at == None,
+            PunishmentsTable.expires_at > now
+        )
+    )
 
-    active = []
+    if serverName:
+        query = query.filter(
+            or_(
+                PunishmentsTable.server_name == None,
+                PunishmentsTable.server_name == serverName
+            )
+        )
 
-    for r in rows:
+    rows = query.all()
 
-        if r.expires_at and r.expires_at < now:
-            continue
-
-        if r.server_name and serverName and r.server_name != serverName:
-            continue
-
-        active.append({
+    active = [
+        {
             "type": r.type,
             "reason": r.reason,
             "issuedBy": r.issued_by,
             "expiresAt": r.expires_at,
             "createdAt": r.created_at,
             "issued": r.issued,
-        })
+        }
+        for r in rows
+    ]
 
     return success_response(
         data=active,
@@ -85,7 +91,6 @@ def check_punishments(userId: str, serverName: str | None, request: Request):
         code=Codes.PUNISHMENT_CHECK_OK,
         trace_id=trace_id
     )
-
 @app.get("/punishments/history")
 def punishment_history(
     userId: str,
@@ -263,8 +268,6 @@ def revoke_bulk(
     )
 
 
-
-
 @app.get("/health")
 def health(request: Request):
     trace_id = request.headers.get("X-Trace-Id")
@@ -272,16 +275,6 @@ def health(request: Request):
     details: dict[str, str] = {}
     ready = True
 
-    # мемори
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        details["memory"] = "OK"
-    except Exception as e:
-        details["memory"] = f"ERROR: {str(e)}"
-        ready = False
-
-    # датабаза
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
@@ -289,7 +282,6 @@ def health(request: Request):
     except Exception as e:
         details["database"] = f"ERROR: {str(e)}"
         ready = False
-
 
     return success_response(
         data={
@@ -302,13 +294,14 @@ def health(request: Request):
         trace_id=trace_id
     )
 
+
 @app.get("/live")
 def live(request: Request):
     trace_id = request.headers.get("X-Trace-Id")
 
     return success_response(
         data={"alive": True},
-        message="svc-whitelist alive",
+        message="svc-punishments alive",
         code=Codes.LIVE_OK,
         trace_id=trace_id
     )
