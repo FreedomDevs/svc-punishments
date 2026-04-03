@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+service PunishmentService {
+  rpc CreatePunishment (CreateRequest) returns (CreateResponse);
+}
+
+message CreateRequest {
+  string userId = 1;
+  string type = 2;
+  string reason = 3;
+  string serverName = 4;
+  int32 duration = 5;
+  string issuedBy = 6;
+}
+
+message CreateResponse {
+  string punishmentId = 1;
+}
