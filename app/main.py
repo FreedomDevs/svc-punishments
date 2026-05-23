@@ -1,11 +1,15 @@
 import uuid
 from datetime import datetime, timedelta
+from typing import Optional
+
 from sqlalchemy import or_
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException, Header, Depends
 from sqlalchemy import text
+from starlette import status
+
 from app.db import SessionLocal, engine
 from app.models import Base, PunishmentsTable
-from app.schemas import PunishmentCreateRequest, PunishmentRevokeRequest
+from app.schemas import PunishmentCreateRequest, PunishmentRevokeRequest, UserBody
 from app.responses import success_response, error_response
 from app.enums import Codes
 
@@ -13,8 +17,48 @@ app = FastAPI(title="svc-punishments")
 
 Base.metadata.create_all(bind=engine)
 
+
+
+async def get_server_name(
+        request: Request,
+        eauth_type: Optional[str] = Header(None, alias="eauth-type"),
+        eauth_server_name: Optional[str] = Header(None, alias="eauth-server-name"),
+) -> str:
+    if not eauth_type or eauth_type == "user":
+        # Если user — читаем имя сервера из Body.
+        # Так как нам нужно прочитать JSON, используем request.json()
+        try:
+            body_data = await request.json()
+            # Валидируем данные через Pydantic-модель
+            user_data = UserBody(**body_data)
+            return user_data.server_name
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Неверный формат Body. Ожидалось поле 'server_name'."
+            )
+
+    elif eauth_type == "server":
+        # Если server — проверяем заголовок "eauth"
+        if not eauth_server_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Для eauth-type='server' необходим заголовок 'eauth'"
+            )
+        return eauth_server_name
+
+    else:
+        # Если передан неизвестный тип авторизации
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Неподдерживаемый eauth-type. Допустимы 'user' или 'server'."
+        )
+
+
+
+
 @app.post("/punishments", status_code=201)
-def create_punishment(req: PunishmentCreateRequest, request: Request):
+def create_punishment(req: PunishmentCreateRequest, request: Request, server_name: str = Depends(get_server_name)):
 
     trace_id = request.headers.get("X-Trace-Id")
 
@@ -29,7 +73,7 @@ def create_punishment(req: PunishmentCreateRequest, request: Request):
         user_id=uuid.UUID(req.userId),
         type=req.type,
         reason=req.reason,
-        server_name=req.serverName,
+        server_name=server_name,
         issued_by=uuid.UUID(req.issuedBy),id = uuid.uuid7(),
         issued="User",
         created_at=datetime.utcnow(),
@@ -47,7 +91,12 @@ def create_punishment(req: PunishmentCreateRequest, request: Request):
     )
 
 @app.get("/punishments/check")
-def check_punishments(userId: str, serverName: str | None, request: Request):
+def check_punishments(
+    userId: str,
+    request: Request,
+    serverName: str | None = None,
+    type: str | None = None
+):
 
     trace_id = request.headers.get("X-Trace-Id")
     db = SessionLocal()
@@ -71,6 +120,9 @@ def check_punishments(userId: str, serverName: str | None, request: Request):
             )
         )
 
+    if type:
+        query = query.filter(PunishmentsTable.type == type)
+
     rows = query.all()
 
     active = [
@@ -91,6 +143,7 @@ def check_punishments(userId: str, serverName: str | None, request: Request):
         code=Codes.PUNISHMENT_CHECK_OK,
         trace_id=trace_id
     )
+
 @app.get("/punishments/history")
 def punishment_history(
     userId: str,
@@ -99,10 +152,10 @@ def punishment_history(
     globalOnly: bool = False,
     fromTime: datetime | None = None,
     toTime: datetime | None = None,
+    type: str | None = None,
     page: int = 1,
     pageSize: int = 20
 ):
-
     trace_id = request.headers.get("X-Trace-Id")
     db = SessionLocal()
 
@@ -122,12 +175,14 @@ def punishment_history(
     if toTime:
         query = query.filter(PunishmentsTable.created_at <= toTime)
 
-    total = query.count()
 
+    if type:
+        query = query.filter(PunishmentsTable.type == type)
+
+    total = query.count()
     rows = query.offset((page - 1) * pageSize).limit(pageSize).all()
 
     history = []
-
     for r in rows:
         history.append({
             "id": r.id,
