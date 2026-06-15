@@ -6,18 +6,20 @@ from sqlalchemy import or_
 from fastapi import FastAPI, Request, HTTPException, Header, Depends
 from sqlalchemy import text
 from starlette import status
+from svcLibs.codes import HealthOK, LiveOK, ValidationError
 
 from app.db import SessionLocal, engine
+from app.enums import *
 from app.models import Base, PunishmentsTable
 from app.schemas import PunishmentCreateRequest, PunishmentRevokeRequest, UserBody
-from app.responses import success_response, error_response
-from app.enums import Codes
 
-app = FastAPI(title="svc-punishments")
+from svcLibs.responses import success_response, error_response
+from svcLibs.middleware import register_errors_handlers
 
 Base.metadata.create_all(bind=engine)
 
-
+app = FastAPI(title="svc-punishments")
+register_errors_handlers(app)
 
 async def get_server_name(
         request: Request,
@@ -59,9 +61,6 @@ async def get_server_name(
 
 @app.post("/punishments", status_code=201)
 def create_punishment(req: PunishmentCreateRequest, request: Request, server_name: str = Depends(get_server_name)):
-
-    trace_id = request.headers.get("X-Trace-Id")
-
     db = SessionLocal()
 
     expires = None
@@ -84,10 +83,9 @@ def create_punishment(req: PunishmentCreateRequest, request: Request, server_nam
     db.commit()
 
     return success_response(
-        data={"punishmentId": punishment.id},
-        message="Punishment created",
-        code=Codes.PUNISHMENT_CREATED_OK,
-        trace_id=trace_id
+        {"punishmentId": punishment.id},
+        PunishmentCreatedOk(),
+        request.headers.get("X-Trace-Id")
     )
 
 @app.get("/punishments/check")
@@ -138,10 +136,9 @@ def check_punishments(
     ]
 
     return success_response(
-        data=active,
-        message="Active punishments fetched",
-        code=Codes.PUNISHMENT_CHECK_OK,
-        trace_id=trace_id
+        active,
+        PunishmentCheckOk(),
+        trace_id
     )
 
 @app.get("/punishments/history")
@@ -210,7 +207,7 @@ def punishment_history(
         },
         "message": "Punishment history fetched",
         "meta": {
-            "code": Codes.PUNISHMENT_HISTORY_OK,
+            "code": PunishmentHistoryOk().CODE,
             "traceId": trace_id,
             "timestamp": datetime.utcnow().isoformat() + "Z"
         }
@@ -235,15 +232,13 @@ def revoke_punishment(
     if not punishment:
 
         return error_response(
-            message="Punishment not found",
-            code=Codes.PUNISHMENT_NOT_FOUND,
-            trace_id=trace_id
+            PunishmentNotFound(),
+            trace_id
         )
     if punishment.revoked_at:
         return error_response(
-            message="Punishment already revoked",
-            code=Codes.PUNISHMENT_ALREADY_REVOKED,
-            trace_id=trace_id
+            PunishmentAlreadyRevoked(),
+            trace_id
 
         )
 
@@ -254,10 +249,9 @@ def revoke_punishment(
     db.commit()
 
     return success_response(
-        data={"punishmentId": punishment_id},
-        message="Punishment revoked",
-        code=Codes.PUNISHMENT_REVOKED_OK,
-        trace_id=trace_id
+        {"punishmentId": punishment_id},
+        PunishmentRevokedOk(),
+        trace_id
     )
 
 
@@ -276,9 +270,8 @@ def revoke_bulk(
 
     if not userId:
         return error_response(
-            message="userId required",
-            code="PUNISHMENT_INVALID_PARAMS",
-            trace_id=trace_id
+            ValidationError(["userId required"]),
+            trace_id
         )
 
     now = datetime.utcnow()
@@ -295,9 +288,8 @@ def revoke_bulk(
 
     if not rows:
         return error_response(
-            message="No active punishments found",
-            code=Codes.PUNISHMENT_NOT_FOUND,
-            trace_id=trace_id
+            PunishmentNotFound(),
+            trace_id
         )
 
     revoked_ids = []
@@ -316,17 +308,14 @@ def revoke_bulk(
     db.commit()
 
     return success_response(
-        data={"revoked": revoked_ids},
-        message="Punishments revoked",
-        code=Codes.PUNISHMENT_REVOKED_OK,
-        trace_id=trace_id
+        {"revoked": revoked_ids},
+        PunishmentRevokedOk(),
+        trace_id
     )
 
 
 @app.get("/health")
 def health(request: Request):
-    trace_id = request.headers.get("X-Trace-Id")
-
     details: dict[str, str] = {}
     ready = True
 
@@ -339,24 +328,20 @@ def health(request: Request):
         ready = False
 
     return success_response(
-        data={
+        {
             "status": "UP" if ready else "ERROR",
             "ready": ready,
             "details": details
         },
-        message="Service is healthy",
-        code=Codes.HEALTH_OK,
-        trace_id=trace_id
+        HealthOK(),
+        request.headers.get("X-Trace-Id")
     )
 
 
 @app.get("/live")
 def live(request: Request):
-    trace_id = request.headers.get("X-Trace-Id")
-
     return success_response(
-        data={"alive": True},
-        message="svc-punishments alive",
-        code=Codes.LIVE_OK,
-        trace_id=trace_id
+        {"alive": True},
+        LiveOK(),
+        request.headers.get("X-Trace-Id")
     )
