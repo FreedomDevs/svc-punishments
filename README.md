@@ -143,7 +143,7 @@ GET `/punishments/check?userId={userId}&serverName={serverName}'
 
 ## История наказаний
 
-GET `/punishments/history?userId={userId}&serverName={serverName}'
+GET `/punishments/history?userId={userId}&serverName={serverName}&fromTime={fromTime}&toTime={toTime}'
 
 Примечания:
 - Если авторизация идёт по токену сервера то serverName указывать нельзя, он подставится сам
