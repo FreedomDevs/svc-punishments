@@ -12,6 +12,9 @@ class PunishmentType(PyEnum):
     GlobalVoiceMute = "GLOBAL_VOICE_MUTE"
     GlobalChatMute = "GLOBAL_CHAT_MUTE"
 
+LOCAL_PUNISHMENTS = ["BAN", "VOICE_MUTE", "CHAT_MUTE"]
+GLOBAL_PUNISHMENTS = ["GLOBAL_FULL_BAN", "GLOBAL_BAN", "GLOBAL_VOICE_MUTE", "GLOBAL_CHAT_MUTE"]
+
 class AuthorizationType(PyEnum):
     Service = "SERVICE"
     Server = "SERVER"

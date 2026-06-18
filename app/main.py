@@ -1,23 +1,19 @@
 import uuid
-from datetime import datetime, timedelta
+import datetime
 from typing import Optional
-
 from sqlalchemy import or_
 from fastapi import FastAPI, Request, HTTPException, Header, Depends
 from sqlalchemy import text
 from starlette import status
 from svcLibs.codes import HealthOK, LiveOK, ValidationError
-
 from app.db import SessionLocal, engine
 from app.enums import *
-from app.models import Base, PunishmentsTable
-from app.schemas import PunishmentCreateRequest, PunishmentRevokeRequest, UserBody
-
+from app.models import Base, PunishmentsTable, GLOBAL_PUNISHMENTS, LOCAL_PUNISHMENTS
+from app.schemas import PunishmentCreateRequest, PunishmentRevokeRequest, UserBody, GlobalPunishmentCreateRequest
 from svcLibs.responses import success_response, error_response
-from svcLibs.middleware import register_errors_handlers
+from svcLibs.middleware import register_errors_handlers, ParseAuthMiddleware, AuthState
 
 Base.metadata.create_all(bind=engine)
-
 app = FastAPI(title="svc-punishments")
 register_errors_handlers(app)
 
@@ -59,23 +55,32 @@ async def get_server_name(
 
 
 
-@app.post("/punishments", status_code=201)
-def create_punishment(req: PunishmentCreateRequest, request: Request, server_name: str = Depends(get_server_name)):
+@app.post("/punishments/local", dependencies=[Depends(ParseAuthMiddleware)])
+def create_local_punishment(req: PunishmentCreateRequest, request: Request):
     db = SessionLocal()
-
+    auth: AuthState = AuthState(**request.state.auth)
     expires = None
 
+    if req.type not in LOCAL_PUNISHMENTS:
+        return error_response(ValidationError(["Некорректный тип наказания"]), request.headers.get("X-Trace-Id"))
+
+    if req.server_name is None and auth.server_name is None:
+        return error_response(ValidationError(["server_name не указан"]), request.headers.get("X-Trace-Id"))
+
+    if req.issued_by is None and auth.user_id is None:
+        return error_response(ValidationError(["issued_by не указан"]), request.headers.get("X-Trace-Id"))
+
     if req.duration:
-        expires = datetime.utcnow() + timedelta(seconds=req.duration)
-    print(req.userId)
+        expires = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=req.duration)
+
     punishment = PunishmentsTable(
+        id = uuid.uuid7(),
         user_id=uuid.UUID(req.userId),
         type=req.type,
         reason=req.reason,
-        server_name=server_name,
-        issued_by=uuid.UUID(req.issuedBy),id = uuid.uuid7(),
-        issued="User",
-        created_at=datetime.utcnow(),
+        server_name=auth.server_name if auth.server_name else req.server_name,
+        issued_by=f"uuid={auth.user_id}" if auth.user_id else req.issued_by,
+        created_at=datetime.datetime.now(datetime.UTC),
         expires_at=expires
     )
 
@@ -83,7 +88,41 @@ def create_punishment(req: PunishmentCreateRequest, request: Request, server_nam
     db.commit()
 
     return success_response(
-        {"punishmentId": punishment.id},
+        {"punishment_id": punishment.id},
+        PunishmentCreatedOk(),
+        request.headers.get("X-Trace-Id")
+    )
+
+@app.post("/punishments/global", dependencies=[Depends(ParseAuthMiddleware)])
+def create_punishment_global(req: GlobalPunishmentCreateRequest, request: Request):
+    db = SessionLocal()
+    auth: AuthState = AuthState(**request.state.auth)
+    expires = None
+
+    if req.type not in GLOBAL_PUNISHMENTS:
+        return error_response(ValidationError(["Некорректный тип наказания"]), request.headers.get("X-Trace-Id"))
+
+    if req.issued_by is None and auth.user_id is None:
+        return error_response(ValidationError(["issued_by не указан"]), request.headers.get("X-Trace-Id"))
+
+    if req.duration:
+        expires = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=req.duration)
+
+    punishment = PunishmentsTable(
+        id=uuid.uuid7(),
+        user_id=uuid.UUID(req.userId),
+        type=req.type,
+        reason=req.reason,
+        issued_by=f"uuid={auth.user_id}" if auth.user_id else req.issued_by,
+        created_at=datetime.datetime.now(datetime.UTC),
+        expires_at=expires
+    )
+
+    db.add(punishment)
+    db.commit()
+
+    return success_response(
+        {"punishment_id": punishment.id},
         PunishmentCreatedOk(),
         request.headers.get("X-Trace-Id")
     )
@@ -93,19 +132,18 @@ def check_punishments(
     userId: str,
     request: Request,
     serverName: str | None = None,
-    type: str | None = None
 ):
 
     trace_id = request.headers.get("X-Trace-Id")
     db = SessionLocal()
 
-    now = datetime.utcnow()
+    now = datetime.datetime.now(datetime.UTC)
 
     query = db.query(PunishmentsTable).filter(
         PunishmentsTable.user_id == uuid.UUID(userId),
-        PunishmentsTable.revoked_at == None,
+        PunishmentsTable.revoked_at is None,
         or_(
-            PunishmentsTable.expires_at == None,
+            PunishmentsTable.expires_at is None,
             PunishmentsTable.expires_at > now
         )
     )
@@ -113,13 +151,12 @@ def check_punishments(
     if serverName:
         query = query.filter(
             or_(
-                PunishmentsTable.server_name == None,
+                PunishmentsTable.server_name is None,
                 PunishmentsTable.server_name == serverName
             )
         )
 
-    if type:
-        query = query.filter(PunishmentsTable.type == type)
+
 
     rows = query.all()
 
@@ -127,10 +164,9 @@ def check_punishments(
         {
             "type": r.type,
             "reason": r.reason,
-            "issuedBy": r.issued_by,
-            "expiresAt": r.expires_at,
-            "createdAt": r.created_at,
-            "issued": r.issued,
+            "issued_by": r.issued_by,
+            "expires_at": r.expires_at,
+            "created_at": r.created_at
         }
         for r in rows
     ]
@@ -146,10 +182,8 @@ def punishment_history(
     userId: str,
     request: Request,
     serverName: str | None = None,
-    globalOnly: bool = False,
     fromTime: datetime | None = None,
     toTime: datetime | None = None,
-    type: str | None = None,
     page: int = 1,
     pageSize: int = 20
 ):
@@ -163,18 +197,12 @@ def punishment_history(
     if serverName:
         query = query.filter(PunishmentsTable.server_name == serverName)
 
-    if globalOnly:
-        query = query.filter(PunishmentsTable.server_name == None)
-
     if fromTime:
         query = query.filter(PunishmentsTable.created_at >= fromTime)
 
     if toTime:
         query = query.filter(PunishmentsTable.created_at <= toTime)
 
-
-    if type:
-        query = query.filter(PunishmentsTable.type == type)
 
     total = query.count()
     rows = query.offset((page - 1) * pageSize).limit(pageSize).all()
@@ -185,14 +213,13 @@ def punishment_history(
             "id": r.id,
             "type": r.type,
             "reason": r.reason,
-            "issuedBy": r.issued_by,
-            "serverName": r.server_name,
-            "createdAt": r.created_at,
-            "expiresAt": r.expires_at,
-            "revokedAt": r.revoked_at,
-            "issued": r.issued,
-            "revokedBy": r.revoked_by,
-            "revokedReason": r.revoke_reason,
+            "issued_by": r.issued_by,
+            "server_name": r.server_name,
+            "created_at": r.created_at,
+            "expires_at": r.expires_at,
+            "revoked_at": r.revoked_at,
+            "revoked_by": r.revoked_by,
+            "revoked_reason": r.revoke_reason,
         })
 
     totalPages = (total + pageSize - 1) // pageSize
@@ -209,7 +236,7 @@ def punishment_history(
         "meta": {
             "code": PunishmentHistoryOk().CODE,
             "traceId": trace_id,
-            "timestamp": datetime.utcnow().isoformat() + "Z"
+            "timestamp": datetime.datetime.now(datetime.UTC).isoformat() + "Z"
         }
     }
 
@@ -242,73 +269,14 @@ def revoke_punishment(
 
         )
 
-    punishment.revoked_at = datetime.utcnow()
-    punishment.revoked_by = req.revokedBy
-    punishment.revoke_reason = req.reason
+    punishment.revoked_at = datetime.datetime.now(datetime.UTC)
+    punishment.revoked_by = req.revoked_by
+    punishment.revoke_reason = req.revoked_reason
 
     db.commit()
 
     return success_response(
         {"punishmentId": punishment_id},
-        PunishmentRevokedOk(),
-        trace_id
-    )
-
-
-
-
-@app.post("/punishments/revoke")
-def revoke_bulk(
-    req: PunishmentRevokeRequest,
-    request: Request,
-    userId: str | None = None,
-    type: str | None = None
-):
-
-    trace_id = request.headers.get("X-Trace-Id")
-    db = SessionLocal()
-
-    if not userId:
-        return error_response(
-            ValidationError(["userId required"]),
-            trace_id
-        )
-
-    now = datetime.utcnow()
-
-    query = db.query(PunishmentsTable).filter(
-        PunishmentsTable.user_id == userId,
-        PunishmentsTable.revoked_at == None
-    )
-
-    if type:
-        query = query.filter(PunishmentsTable.type == type)
-
-    rows = query.all()
-
-    if not rows:
-        return error_response(
-            PunishmentNotFound(),
-            trace_id
-        )
-
-    revoked_ids = []
-
-    for p in rows:
-
-        if p.expires_at and p.expires_at < now:
-            continue
-
-        p.revoked_at = now
-        p.revoked_by = req.revokedBy
-        p.revoke_reason = req.reason
-
-        revoked_ids.append(str(p.id))
-
-    db.commit()
-
-    return success_response(
-        {"revoked": revoked_ids},
         PunishmentRevokedOk(),
         trace_id
     )
