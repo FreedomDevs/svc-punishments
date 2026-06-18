@@ -32,12 +32,12 @@ POST `/punishments/local`
 
 ```jsonc
 {
-  "userId": "c9a6467e-3d02-4f29-95c2-7a0c1d0c7c12", // UUID человека который наказан
+  "user_id": "c9a6467e-3d02-4f29-95c2-7a0c1d0c7c12", // UUID человека который наказан
   "type": "BAN", // Enum, локальное наказание
   "reason": "Cheating", // Причина наказания, это просто строка
-  "serverName": "survival-1", // Имя сервера к которому относится это наказание, подставляется автоматически при авторизации по токену сервера
+  "server_name": "survival-1", // Имя сервера к которому относится это наказание, подставляется автоматически при авторизации по токену сервера
   "duration": 3600, // Время действия наказания в секундах, можно null, так будет навсегда
-  "issuedBy": "user=a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1" // Информация issuedBy того кто вынес это наказание
+  "issued_by": "user=a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1" // Информация issuedBy того кто вынес это наказание
 }
 ```
 
@@ -48,7 +48,7 @@ HTTP `201 Created`
 ```json
 {
   "data": {
-    "punishmentId": "0c0c7a0c-7a0c-7a0c-7a0c-0c0c7a0c7a0c"
+    "punishment_id": "0c0c7a0c-7a0c-7a0c-7a0c-0c0c7a0c7a0c"
   },
   "message": "Punishment created",
   "meta": {
@@ -70,11 +70,11 @@ POST `/punishments/global`
 
 ```jsonc
 {
-  "userId": "c9a6467e-3d02-4f29-95c2-7a0c1d0c7c12", // UUID человека который наказан
+  "user_id": "c9a6467e-3d02-4f29-95c2-7a0c1d0c7c12", // UUID человека который наказан
   "type": "GLOBAL_FULL_BAN", // Enum, глобальные наказание
   "reason": "Huesos", // Причина наказания, это просто строка
   "duration": null, // Время действия наказания в секундах, можно null, так будет навсегда
-  "issuedBy": "user=a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1" // Информация issuedBy того кто вынес это наказание
+  "issued_by": "user=a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1" // Информация issuedBy того кто вынес это наказание
 }
 ```
 
@@ -85,7 +85,7 @@ HTTP `201 Created`
 ```json
 {
   "data": {
-    "punishmentId": "55ac3844-fe27-4bd2-950c-7944bb6cb98a"
+    "punishment_id": "55ac3844-fe27-4bd2-950c-7944bb6cb98a"
   },
   "message": "Punishment created",
   "meta": {
@@ -120,9 +120,9 @@ GET `/punishments/check?userId={userId}&serverName={serverName}'
     {
       "type": "BAN",
       "reason": "Cheating",
-      "issuedBy": "user=a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1",
-      "expiresAt": "2026-03-14T12:00:00Z",
-      "createdAt": "2026-03-13T12:00:00Z",
+      "issued_by": "user=a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1",
+      "expires_at": "2026-03-14T12:00:00Z",
+      "created_at": "2026-03-13T12:00:00Z",
     }
   ],
   "message": "Active punishments fetched",
@@ -161,13 +161,13 @@ GET `/punishments/history?userId={userId}&serverName={serverName}'
       "id": "0c0c7a0c-7a0c-7a0c-7a0c-0c0c7a0c7a0c",
       "type": "BAN",
       "reason": "Cheating",
-      "issuedBy": "user=a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1",
-      "serverName": "survival-1",
-      "createdAt": "2026-03-13T12:00:00Z",
-      "expiresAt": "2026-03-14T12:00:00Z",
-      "revokedAt": null,
-      "revokedBy": null,
-      "revokedReason": null
+      "issued_by": "user=a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1",
+      "server_name": "survival-1",
+      "created_at": "2026-03-13T12:00:00Z",
+      "expires_at": "2026-03-14T12:00:00Z",
+      "revoked_at": null,
+      "revoked_by": null,
+      "revoked_reason": null
     }
   ],
   "message": "Punishment history fetched",
@@ -192,8 +192,8 @@ POST `/punishments/{punishmentId}/revoke`
 
 ```json
 {
-  "revokedBy": "user=a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1",
-  "revokedReason": "Appeal accepted"
+  "revoked_by": "user=a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1",
+  "revoked_reason": "Appeal accepted"
 }
 ```
 
@@ -201,9 +201,7 @@ POST `/punishments/{punishmentId}/revoke`
 
 ```json
 {
-  "data": {
-    "punishmentId": "0c0c7a0c-7a0c-7a0c-7a0c-0c0c7a0c7a0c"
-  },
+  "data": {},
   "message": "Punishment revoked",
   "meta": {
     "code": "PUNISHMENT_REVOKED_OK",
