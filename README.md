@@ -1,76 +1,43 @@
 # svc-punishments
 
-Микросервис хранения и управления наказаниями игроков сети серверов Minecraft.
+Микросервис хранения и управления наказаниями игроков Minecraft.
 
-Сервис хранит информацию о наказаниях и предоставляет REST API для работы с ними.
-Исполнение наказаний (бан, мут и т.д.) выполняется серверными плагинами.
-
-Поддерживаемые типы наказаний:
-
-* BAN
-* MUTE
-* WARN
-
-Поддерживаются:
-
-* **глобальные наказания** (serverName = null)
-* **локальные наказания** (для конкретного сервера)
-
-Все наказания сохраняются в PostgreSQL и доступны через REST API.
+Типы локальных наказаний (работают только в пределах конкретного сервера):
+- BAN
+- VOICE_MUTE
+- CHAT_MUTE
+Типы глобальных наказаний (распространяются на все сервера, и вообще на всё):
+- GLOBAL_FULL_BAN — блокирует даже вход в аккаунт на сайте
+- GLOBAL_BAN
+- GLOBAL_VOICE_MUTE
+- GLOBAL_CHAT_MUTE 
 
 ---
 
-# Запуск
+# Сетевые адреса в тестовой docker сети
 
-Сервис запускается через **docker compose**.
+IP сервиса из docker-compose: `http://[fd98:2dd6:8f48:1d99:5902:b7ae::2]`
 
-```bash
-docker compose up --build
-```
+Swagger документация: `http://[fd98:2dd6:8f48:1d99:5902:b7ae::2]/docs`
 
-После запуска будут подняты:
-
-* **svc-punishments-app-dev** — приложение
-* **svc-punishments-postgres** — база данных
-
----
-
-# Сетевые адреса
-
-IP сервиса из docker-compose:
-
-```
-http://[fd98:2dd6:8f48:1d99:5902:b7ae::2]
-```
-
-IP базы данных:
-
-```
-[fd98:2dd6:8f48:1d99:5902:b7ae::3]:5432
-```
-
-Swagger документация:
-
-```
-http://[fd98:2dd6:8f48:1d99:5902:b7ae::2]/docs
-```
+IP базы данных из docker-compose: `[fd98:2dd6:8f48:1d99:5902:b7ae::3]:5432`
 
 ---
 
 # Пример запросов
 
-## Создание наказания
+## Создание локального наказания
 
-POST `/punishments`
+POST `/punishments/local`
 
-```json
+```jsonc
 {
-  "userId": "c9a6467e-3d02-4f29-95c2-7a0c1d0c7c12",
-  "type": "BAN",
-  "reason": "Cheating",
-  "serverName": "survival-1",
-  "duration": 3600,
-  "issuedBy": "a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1"
+  "user_id": "c9a6467e-3d02-4f29-95c2-7a0c1d0c7c12", // UUID человека который наказан
+  "type": "BAN", // Enum, локальное наказание
+  "reason": "Cheating", // Причина наказания, это просто строка
+  "server_name": "survival-1", // Имя сервера к которому относится это наказание, подставляется автоматически при авторизации по токену сервера
+  "duration": 3600, // Время действия наказания в секундах, можно null, так будет навсегда
+  "issued_by": "user=a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1" // Информация issuedBy того кто вынес это наказание
 }
 ```
 
@@ -81,7 +48,7 @@ HTTP `201 Created`
 ```json
 {
   "data": {
-    "punishmentId": "0c0c7a0c-7a0c-7a0c-7a0c-0c0c7a0c7a0c"
+    "punishment_id": "0c0c7a0c-7a0c-7a0c-7a0c-0c0c7a0c7a0c"
   },
   "message": "Punishment created",
   "meta": {
@@ -92,15 +59,58 @@ HTTP `201 Created`
 }
 ```
 
+Коды ответов:
+- PUNISHMENT_CREATED_OK — наказание успешно создано (201)
+- PUNISHMENT_VALIDATION_ERROR — ошибка при валидации (422)
+- PUNISHMENT_INTERNAL_ERROR — внутренная ошибка (500)
+
+## Создание глобального наказания
+
+POST `/punishments/global`
+
+```jsonc
+{
+  "user_id": "c9a6467e-3d02-4f29-95c2-7a0c1d0c7c12", // UUID человека который наказан
+  "type": "GLOBAL_FULL_BAN", // Enum, глобальные наказание
+  "reason": "Huesos", // Причина наказания, это просто строка
+  "duration": null, // Время действия наказания в секундах, можно null, так будет навсегда
+  "issued_by": "user=a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1" // Информация issuedBy того кто вынес это наказание
+}
+```
+
+Ответ:
+
+HTTP `201 Created`
+
+```json
+{
+  "data": {
+    "punishment_id": "55ac3844-fe27-4bd2-950c-7944bb6cb98a"
+  },
+  "message": "Punishment created",
+  "meta": {
+    "code": "PUNISHMENT_CREATED_OK",
+    "traceId": "8d4c5c8c4e624154bd7f5105f6254bc7",
+    "timestamp": "2026-03-13T12:00:00Z"
+  }
+}
+```
+
+Коды ответов:
+- PUNISHMENT_CREATED_OK — наказание успешно создано (201)
+- PUNISHMENT_VALIDATION_ERROR — ошибка при валидации (422)
+- PUNISHMENT_INTERNAL_ERROR — внутренная ошибка (500)
+
 ---
 
 ## Проверка активных наказаний
 
-GET
+GET `/punishments/check?userId={userId}&serverName={serverName}'
 
-```
-/punishments/check?userId={userId}&serverName={serverName}
-```
+Примечания:
+- Если авторизация идёт по токену сервера то serverName указывать нельзя, он подставится сам
+- Endpoint выдаёт не только локальные наказания с сервера, а также глобальные наказания (те которые не привязаны ни к какому серверу)
+- Есди авторизация идёт **не** по токену сервера и serverName отсутствует то в ответ придут только глобальные наказания
 
 Ответ:
 
@@ -110,10 +120,9 @@ GET
     {
       "type": "BAN",
       "reason": "Cheating",
-      "issuedBy": "a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1",
-      "expiresAt": "2026-03-14T12:00:00Z",
-      "createdAt": "2026-03-13T12:00:00Z",
-      "issued": "User"
+      "issued_by": "user=a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1",
+      "expires_at": "2026-03-14T12:00:00Z",
+      "created_at": "2026-03-13T12:00:00Z",
     }
   ],
   "message": "Active punishments fetched",
@@ -125,15 +134,23 @@ GET
 }
 ```
 
+Коды ответов:
+- PUNISHMENT_CHECK_OK — наказания успешно проверены (200)
+- PUNISHMENT_VALIDATION_ERROR — ошибка при валидации (422)
+- PUNISHMENT_INTERNAL_ERROR — внутренная ошибка (500)
+
 ---
 
 ## История наказаний
 
-GET
+GET `/punishments/history?userId={userId}&serverName={serverName}&fromTime={fromTime}&toTime={toTime}'
 
-```
-/punishments/history?userId={userId}
-```
+Примечания:
+- Если авторизация идёт по токену сервера то serverName указывать нельзя, он подставится сам
+- Endpoint выдаёт не только локальные наказания с сервера, а также глобальные наказания (те которые не привязаны ни к какому серверу)
+- Есди авторизация идёт **не** по токену сервера и serverName отсутствует то в ответ придут только глобальные наказания
+
+Тут должна быть пагинация
 
 Ответ:
 
@@ -144,14 +161,13 @@ GET
       "id": "0c0c7a0c-7a0c-7a0c-7a0c-0c0c7a0c7a0c",
       "type": "BAN",
       "reason": "Cheating",
-      "issuedBy": "a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1",
-      "serverName": "survival-1",
-      "createdAt": "2026-03-13T12:00:00Z",
-      "expiresAt": "2026-03-14T12:00:00Z",
-      "revokedAt": null,
-      "issued": "User",
-      "revokedBy": null,
-      "revokedReason": null
+      "issued_by": "user=a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1",
+      "server_name": "survival-1",
+      "created_at": "2026-03-13T12:00:00Z",
+      "expires_at": "2026-03-14T12:00:00Z",
+      "revoked_at": null,
+      "revoked_by": null,
+      "revoked_reason": null
     }
   ],
   "message": "Punishment history fetched",
@@ -163,20 +179,21 @@ GET
 }
 ```
 
+Коды ответов:
+- PUNISHMENT_HISTORY_OK — история наказаний успешно получена (200)
+- PUNISHMENT_VALIDATION_ERROR — ошибка при валидации (422)
+- PUNISHMENT_INTERNAL_ERROR — внутренная ошибка (500)
+
 ---
 
 ## Отмена наказания
 
-POST
-
-```
-/punishments/{punishmentId}/revoke
-```
+POST `/punishments/{punishmentId}/revoke`
 
 ```json
 {
-  "revokedBy": "a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1",
-  "reason": "Appeal accepted"
+  "revoked_by": "user=a8d1c6d2-5b65-4c24-bb18-1a28c4f8b9a1",
+  "revoked_reason": "Appeal accepted"
 }
 ```
 
@@ -184,9 +201,7 @@ POST
 
 ```json
 {
-  "data": {
-    "punishmentId": "0c0c7a0c-7a0c-7a0c-7a0c-0c0c7a0c7a0c"
-  },
+  "data": {},
   "message": "Punishment revoked",
   "meta": {
     "code": "PUNISHMENT_REVOKED_OK",
@@ -196,28 +211,10 @@ POST
 }
 ```
 
----
+Коды ответов:
+- PUNISHMENT_REVOKED_OK — наказание успешно снято (200)
+- PUNISHMENT_ALREADY_REVOKED — наказание уже было снято (400)
+- PUNISHMENT_NOT_FOUND — наказание не существует (404)
+- PUNISHMENT_VALIDATION_ERROR — ошибка при валидации (422)
+- PUNISHMENT_INTERNAL_ERROR — внутренная ошибка (500)
 
-# Эндпоинты
-
-| Метод | Endpoint                 | Описание                     |
-| ----- | ------------------------ | ---------------------------- |
-| POST  | /punishments             | Выдать наказание             |
-| GET   | /punishments/check       | Проверить активные наказания |
-| GET   | /punishments/history     | Получить историю наказаний   |
-| POST  | /punishments/{id}/revoke | Отменить наказание           |
-
----
-
-# HTTP коды статусов
-
-| Код                        | Описание                    |
-| -------------------------- | --------------------------- |
-| PUNISHMENT_CREATED_OK      | Наказание создано           |
-| PUNISHMENT_CHECK_OK        | Активные наказания получены |
-| PUNISHMENT_HISTORY_OK      | История наказаний получена  |
-| PUNISHMENT_REVOKED_OK      | Наказание отменено          |
-| PUNISHMENT_NOT_FOUND       | Наказание не найдено        |
-| PUNISHMENT_ALREADY_REVOKED | Наказание уже отменено      |
-
----

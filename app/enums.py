@@ -1,12 +1,32 @@
-class Codes:
+from svcLibs.codes import BaseOkCode, BaseErrorCode
 
-    HEALTH_OK = "HEALTH_OK"
-    LIVE_OK = "LIVE_OK"
-    HEALTH_ERROR = "HEALTH_ERROR"
+class PunishmentCreatedOk(BaseOkCode):
+    HTTPCODE = 201
+    CODE = "PUNISHMENT_CREATED_OK"
+    MESSAGE = "Наказание успешно создано"
 
-    PUNISHMENT_CREATED_OK = "PUNISHMENT_CREATED_OK"
-    PUNISHMENT_CHECK_OK = "PUNISHMENT_CHECK_OK"
-    PUNISHMENT_HISTORY_OK = "PUNISHMENT_HISTORY_OK"
-    PUNISHMENT_REVOKED_OK = "PUNISHMENT_REVOKED_OK"
-    PUNISHMENT_NOT_FOUND = "PUNISHMENT_NOT_FOUND"
-    PUNISHMENT_ALREADY_REVOKED = "PUNISHMENT_ALREADY_REVOKED"
+class PunishmentCheckOk(BaseOkCode):
+    HTTPCODE = 200
+    CODE = "PUNISHMENT_CHECK_OK"
+    MESSAGE = "Активное наказание успешно получено"
+
+class PunishmentHistoryOk(BaseOkCode):
+    HTTPCODE = 200
+    CODE = "PUNISHMENT_HISTORY_OK"
+    MESSAGE = "Активное наказание успешно получено"
+
+class PunishmentRevokedOk(BaseOkCode):
+    HTTPCODE = 200
+    CODE = "PUNISHMENT_REVOKED_OK"
+    MESSAGE = "Наказание успешно отменено"
+
+class PunishmentNotFound(BaseErrorCode):
+    HTTPCODE = 404
+    CODE = "PUNISHMENT_NOT_FOUND"
+    MESSAGE = "Наказание не найдено"
+
+class PunishmentAlreadyRevoked(BaseErrorCode):
+    HTTPCODE = 400
+    CODE = "PUNISHMENT_ALREADY_REVOKED"
+    MESSAGE = "Наказание уже отменено"
+
