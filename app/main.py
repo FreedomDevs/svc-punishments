@@ -6,12 +6,13 @@ from fastapi import FastAPI, Request, HTTPException, Header, Depends
 from sqlalchemy import text
 from starlette import status
 from svcLibs.codes import HealthOK, LiveOK, ValidationError
-from app.db import SessionLocal, engine
 from app.enums import *
 from app.models import Base, PunishmentsTable, GLOBAL_PUNISHMENTS, LOCAL_PUNISHMENTS
 from app.schemas import PunishmentCreateRequest, PunishmentRevokeRequest, UserBody, GlobalPunishmentCreateRequest
+
 from svcLibs.responses import success_response, error_response
 from svcLibs.middleware import register_errors_handlers, ParseAuthMiddleware, AuthState
+from svcLibs.db import SessionLocal, engine
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="svc-punishments")

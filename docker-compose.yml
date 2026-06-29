@@ -20,6 +20,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile-test
+    environment:
+      DATABASE_URL: "[fd98:2dd6:8f48:1d99:5902:b7ae::3]:5432"
+      DATABASE_USER: "postgres"
+      DATABASE_PASSWORD: "postgres"
+      DATABASE_DBNAME: "mydb"
     volumes:
       - ./app:/app:rw
     depends_on:
@@ -32,14 +37,9 @@ services:
         ipv6_address: fd98:2dd6:8f48:1d99:5902:b7ae::2
 
 networks:
-  net:
-    enable_ipv6: true
-    enable_ipv4: false
-    driver_opts:
-      com.docker.network.driver.mtu: "65535"
-    ipam:
-      config:
-        - subnet: fd98:2dd6:8f48:1d99:5902:b7ae::/96
+  shared-net:
+    external: true
+    name: svc-net
 
 volumes:
   db:
