@@ -1,6 +1,8 @@
 import uuid
 import datetime
 from typing import Optional
+
+import httpx
 from sqlalchemy import or_
 from fastapi import FastAPI, Request, HTTPException, Header, Depends
 from sqlalchemy import text
@@ -13,6 +15,9 @@ from app.schemas import PunishmentCreateRequest, PunishmentRevokeRequest, UserBo
 from svcLibs.responses import success_response, error_response
 from svcLibs.middleware import register_errors_handlers, ParseAuthMiddleware, AuthState
 from svcLibs.db import SessionLocal, engine
+import os
+from fastapi import FastAPI, BackgroundTasks
+
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="svc-punishments")
@@ -54,12 +59,57 @@ async def get_server_name(
         )
 
 
+async def run_parse_auth_middleware(request: Request):
+    # Создаем экземпляр твоего middleware.
+    # BaseHTTPMiddleware требует ASGI-приложение в конструктор, передаем None
+    middleware = ParseAuthMiddleware(app=None)
+
+    # Фейковый call_next, который просто возвращает пустой ответ,
+    # если middleware успешно пропустило запрос дальше
+    async def dummy_call_next(req):
+        return "OK"
+
+    try:
+        # Вручную вызываем dispatch
+        result = await middleware.dispatch(request, dummy_call_next)
+        return result
+    except Exception as e:
+        # Если внутри middleware возникла ошибка авторизации,
+        # она пробросится сюда и прервет запрос
+        raise HTTPException(status_code=401, detail=str(e))
 
 
-@app.post("/punishments/local", dependencies=[Depends(ParseAuthMiddleware)])
-def create_local_punishment(req: PunishmentCreateRequest, request: Request):
+SVC_QUEUE_URL = os.getenv("SVC_QUEUE_URL", "http://[fd98:2dd6:8f48:1d99::1]:8080")
+
+async def queue_send(punishment: PunishmentsTable):
+    data = {
+        "id": str(punishment.id),
+        "user_id": str(punishment.user_id),
+        "created_at": punishment.created_at.isoformat(),
+        "expires_at": punishment.expires_at.isoformat() if punishment.expires_at else None,
+        "server_name": punishment.server_name,
+        "type": punishment.type,
+        "reason": punishment.reason,
+        "issued_by": punishment.issued_by,
+        "issuer_authorization_type": punishment.issuer_authorization_type,
+        "revoked_at": punishment.revoked_at.isoformat() if punishment.revoked_at else None,
+        "revoked_by": punishment.revoked_by,
+        "revoke_reason": punishment.revoke_reason,
+        "revoker_authorization_type": punishment.revoker_authorization_type,
+    }
+    try:
+        print("Отправка в очередь:", data)
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(SVC_QUEUE_URL, json=data)
+            print("Успешная отправка, статус:", resp.status_code)
+    except Exception as e:
+        print("Внимание, не удалось отправить в очередь", e)
+
+
+@app.post("/punishments/local", dependencies=[Depends(run_parse_auth_middleware)])
+async def create_local_punishment(req: PunishmentCreateRequest, request: Request, background_tasks: BackgroundTasks):
     db = SessionLocal()
-    auth: AuthState = AuthState(**request.state.auth)
+    auth: AuthState = request.state.auth
     expires = None
 
     if req.type not in LOCAL_PUNISHMENTS:
@@ -76,28 +126,29 @@ def create_local_punishment(req: PunishmentCreateRequest, request: Request):
 
     punishment = PunishmentsTable(
         id = uuid.uuid7(),
-        user_id=uuid.UUID(req.userId),
+        user_id=uuid.UUID(req.user_id),
         type=req.type,
         reason=req.reason,
         server_name=auth.server_name if auth.server_name else req.server_name,
-        issued_by=f"uuid={auth.user_id}" if auth.user_id else req.issued_by,
+        issued_by=f"uuid={auth.user_id}" if auth.user_id else req.issued_by, issuer_authorization_type = auth.type,
         created_at=datetime.datetime.now(datetime.UTC),
         expires_at=expires
     )
 
     db.add(punishment)
     db.commit()
+    await queue_send(punishment)
 
     return success_response(
-        {"punishment_id": punishment.id},
+        {"punishment_id": str(punishment.id)},
         PunishmentCreatedOk(),
         request.headers.get("X-Trace-Id")
     )
 
-@app.post("/punishments/global", dependencies=[Depends(ParseAuthMiddleware)])
-def create_punishment_global(req: GlobalPunishmentCreateRequest, request: Request):
+@app.post("/punishments/global", dependencies=[Depends(run_parse_auth_middleware)])
+def create_punishment_global(req: GlobalPunishmentCreateRequest, request: Request, background_tasks: BackgroundTasks):
     db = SessionLocal()
-    auth: AuthState = AuthState(**request.state.auth)
+    auth: AuthState = request.state.auth
     expires = None
 
     if req.type not in GLOBAL_PUNISHMENTS:
@@ -111,16 +162,17 @@ def create_punishment_global(req: GlobalPunishmentCreateRequest, request: Reques
 
     punishment = PunishmentsTable(
         id=uuid.uuid7(),
-        user_id=uuid.UUID(req.userId),
+        user_id=uuid.UUID(req.user_id),
         type=req.type,
         reason=req.reason,
-        issued_by=f"uuid={auth.user_id}" if auth.user_id else req.issued_by,
+        issued_by=f"uuid={auth.user_id}" if auth.user_id else req.issued_by, issuer_authorization_type = auth.type,
         created_at=datetime.datetime.now(datetime.UTC),
         expires_at=expires
     )
 
     db.add(punishment)
     db.commit()
+    queue_send(punishment)
 
     return success_response(
         {"punishment_id": punishment.id},
@@ -183,8 +235,8 @@ def punishment_history(
     userId: str,
     request: Request,
     serverName: str | None = None,
-    fromTime: datetime | None = None,
-    toTime: datetime | None = None,
+    fromTime: datetime.datetime | None = None,
+    toTime: datetime.datetime | None = None,
     page: int = 1,
     pageSize: int = 20
 ):

@@ -16,9 +16,9 @@ LOCAL_PUNISHMENTS = ["BAN", "VOICE_MUTE", "CHAT_MUTE"]
 GLOBAL_PUNISHMENTS = ["GLOBAL_FULL_BAN", "GLOBAL_BAN", "GLOBAL_VOICE_MUTE", "GLOBAL_CHAT_MUTE"]
 
 class AuthorizationType(PyEnum):
-    Service = "SERVICE"
-    Server = "SERVER"
-    User = "USER"
+    Service = "service"
+    Server = "server"
+    User = "user"
 
 
 Base = declarative_base()
@@ -38,14 +38,14 @@ class PunishmentsTable(Base):
     # Имя сервера на котором выдано наказание, если NULL то наказание глобальное
     server_name = Column(String, nullable=True)
     # Тип блокироки
-    type = Column(Enum(PunishmentType), nullable=False)
+    type = Column(String, nullable=False)
 
     # Причина блокировки
     reason = Column(String, nullable=False)
     # Кто сделал эту блокировку, произвольное поле для SERVER и SERVICE, и user=<UUID> для USER
     issued_by = Column(String, nullable=False)
     # Способ авторизации который был использовал для создания наказания
-    issuer_authorization_type = Column(Enum(AuthorizationType), nullable=False)
+    issuer_authorization_type = Column(String, nullable=False)
 
     # Дата преждевременной отмены блокировки
     revoked_at = Column(DateTime, nullable=True)
@@ -54,4 +54,4 @@ class PunishmentsTable(Base):
     # Причина по которой блокировка была снята
     revoke_reason = Column(String, nullable=True)
     # Способ авторизации который был использовал для отмены наказания
-    revoker_authorization_type = Column(Enum(AuthorizationType), nullable=True)
+    revoker_authorization_type = Column(String, nullable=True)

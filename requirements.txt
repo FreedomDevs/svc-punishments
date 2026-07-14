@@ -1,2 +1,2 @@
 svcLibs @ git+https://github.com/FreedomDevs/svcLibs.git
-
+httpx~=0.28.1
